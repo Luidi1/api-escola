@@ -1,0 +1,10 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "conexaoSQLite",
+            "database": "${workspaceFolder:api_escola}/src/database/storage/database.sqlite"
+        }
+    ]
+}
