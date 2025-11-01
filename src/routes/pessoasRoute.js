@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/pessoas', pessoaController.pegaTodos.bind(pessoaController));
 router.get('/pessoas/pegarUmaPessoaPorFiltro', pessoaController.pegaUmPorFiltro.bind(pessoaController));
+router.get('/pessoas/pegarPessoasAtivas', pessoaController.pegaPorEscopo.bind(pessoaController));
 router.get('/pessoas/:id', pessoaController.pegaUmPorId.bind(pessoaController));
 
 module.exports = router;

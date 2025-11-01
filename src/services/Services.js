@@ -6,18 +6,18 @@ class Services {
     }
 
     async pegaTodosOsRegistros(opts = {}) {
-    const { scope, where, ...resto } = opts;
+    const { escopo, where, ...resto } = opts;
 
-    // 1) Resolve o "model" (com ou sem scope)
+    // 1) Resolve o "model" (com ou sem escopo)
     let modelo = dataSource[this.modelo];
-    if (scope) {
-      modelo = modelo.scope(scope);
+    if (escopo) {
+      modelo = modelo.escopo(escopo);
     }
 
     // 2) Monta as opções finais pro findAll
     const opcoes = { ...resto };
     if (where && Object.keys(where).length > 0) {
-      opcoes.where = where; // deixa o Sequelize combinar com o que vier do scope
+      opcoes.where = where; // deixa o Sequelize combinar com o que vier do escopo
     }
     // 3) Executa
     return modelo.findAll(opcoes);
@@ -28,8 +28,18 @@ class Services {
     throw new Error('Nenhum filtro (where) foi informado para busca única.');
   }
 
-  const registros = await this.pegaTodosOsRegistros(opts);
-  return registros[0] || null;
+  const { scope, where, ...resto } = opts;
+  let modelo = dataSource[this.modelo];
+  if (scope) {
+    modelo = modelo.scope(scope);
+  }
+
+  const opcoes = { ...resto };
+    if (where && Object.keys(where).length > 0) {
+      opcoes.where = where; // deixa o Sequelize combinar com o que vier do escopo
+    }
+
+  return modelo.findOne(opcoes);
 }
 }
 
