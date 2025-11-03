@@ -12,6 +12,7 @@ class PessoaServices extends Services {
         ativo: 'boolean',
         cpf: 'cpf',
     };
+     static CAMPOS_ORDENAVEIS = ['id', 'email', 'nome'];
 
     async pegaPessoaPorEscopo(escopo, opts = {}) {
         const listaPessoasPorEscopo = await super.pegaTodosOsRegistros({
