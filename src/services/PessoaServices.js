@@ -12,7 +12,9 @@ class PessoaServices extends Services {
         ativo: 'boolean',
         cpf: 'cpf',
     };
-     static CAMPOS_ORDENAVEIS = ['id', 'email', 'nome'];
+    static CAMPOS_ORDENAVEIS = ['id', 'email', 'nome'];
+    static SCOPES_PERMITIDOS = ['todosOsRegistros', 'inativos'];
+
 
     async pegaPessoaPorEscopo(escopo, opts = {}) {
         const listaPessoasPorEscopo = await super.pegaTodosOsRegistros({
