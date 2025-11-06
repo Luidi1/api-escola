@@ -36,6 +36,10 @@ class Services {
     const opcoes = { ...resto, where };
     return modelo.findOne(opcoes);
   }
+
+  async criaRegistro(dadosDoRegistro) {
+    return dataSource[this.modelo].create(dadosDoRegistro);
+  }
 }
 
 module.exports = Services;

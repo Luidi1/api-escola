@@ -1,112 +1,126 @@
+// src/controllers/utils/montarWhere.js
+const verificadorDeNome = require('../../utils/verificadorDeNome');
+const verificadorDeEmail = require('../../utils/verificadorDeEmail');
+
 function montarWhere(query, camposPermitidos = [], tipos = {}) {
   const where = {};
   const invalidos = [];        // { parametro, valorRecebido, dica }
-  const valoresInvalidos = []; // { parametro, valorRecebido, dica }
+  const valoresInvalidos = []; // { parametro, valorRecebido, dica, tipo }
+
+  // helper: coloca a dica no formato "Ex.: ?campo=valor"
+  function dicaComQuery(campo, dica) {
+    // se a dica já tiver "Ex.:" seguido de um exemplo, injeta "?campo="
+    // Ex.: "Ex.: Maria da Silva" => "Ex.: ?nome=Maria da Silva"
+    return dica.replace(/Ex\.\s*:\s*/i, `Ex.: ?${campo}=`);
+  }
+
+  // helper: empurra erros no formato padrão do montarWhere
+  function empurraErros(campo, valorRecebido, errosDoValidador, { usarFormatoQuery = true } = {}) {
+    for (const e of errosDoValidador) {
+      const dica = usarFormatoQuery ? dicaComQuery(campo, e.dica) : e.dica;
+      valoresInvalidos.push({
+        parametro: campo,
+        valorRecebido,
+        dica,
+        tipo: 'valor_invalido',
+      });
+    }
+  }
 
   for (const chave of Object.keys(query)) {
     if (!camposPermitidos.includes(chave)) {
       invalidos.push({ parametro: chave, valorRecebido: query[chave], dica: 'Parâmetro não permitido.' });
-      continue; // segue coletando os demais
+      continue;
     }
 
     let v = query[chave];
 
     switch (tipos[chave]) {
       case 'number': {
-        const n = Number(v);
-        if (Number.isNaN(n)) {
-          valoresInvalidos.push({ parametro: chave, valorRecebido: v, dica: 'Use um número inteiro. Ex.: ?id=3' });
-          continue; // não retorna!
+        const s = String(v).trim();
+
+        // rejeita vazio, espaços e qualquer coisa que não seja inteiro (opcional: só positivos)
+        if (!/^-?\d+$/.test(s)) { // use /^\d+$/ se quiser só positivos
+          valoresInvalidos.push({
+            parametro: chave,
+            valorRecebido: v,
+            dica: `Use um número inteiro. Ex.: ?${chave}=3`,
+          });
+          continue;
         }
+
+        const n = Number(s);
+
+        // (opcional) se for um id, exija > 0
+        if (chave === 'id' && n <= 0) {
+          valoresInvalidos.push({
+            parametro: chave,
+            valorRecebido: v,
+            dica: `Use um id inteiro positivo. Ex.: ?${chave}=3`,
+          });
+          continue;
+        }
+
         v = n;
         break;
       }
+
       case 'boolean': {
         const s = String(v).toLowerCase();
         if (s !== 'true' && s !== 'false') {
-          valoresInvalidos.push({ parametro: chave, valorRecebido: v, dica: 'Use true ou false. Ex.: ?ativo=true' });
+          valoresInvalidos.push({
+            parametro: chave,
+            valorRecebido: v,
+            dica: `Use true ou false. Ex.: ?${chave}=true`,
+            tipo: 'valor_invalido',
+          });
           continue;
         }
         v = (s === 'true');
         break;
       }
+
       case 'cpf': {
         const ok = /^\d{11}$/.test(String(v));
         if (!ok) {
-          valoresInvalidos.push({ parametro: chave, valorRecebido: v, dica: '11 dígitos numéricos. Ex.: ?cpf=12345678900' });
+          valoresInvalidos.push({
+            parametro: chave,
+            valorRecebido: v,
+            dica: `11 dígitos numéricos. Ex.: ?${chave}=12345678900`,
+            tipo: 'valor_invalido',
+          });
           continue;
         }
         v = String(v);
         break;
       }
+
       case 'email': {
-        const ok = /^[\w.-]+@[\w.-]+\.\w{2,}$/.test(String(v));
-        if (!ok) {
-          valoresInvalidos.push({ parametro: chave, valorRecebido: v, dica: 'E-mail válido. Ex.: ?email=ex@dominio.com' });
+        // usa o verificador completo (normaliza domínio, checa formato por etapas)
+        const r = verificadorDeEmail(v);
+        if (!r.ok) {
+          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
           continue;
         }
-        v = String(v);
+        v = r.valor; // e-mail normalizado (ex.: domínio em minúsculas)
         break;
       }
-      // dentro do switch (tipos[chave]) no montarWhere.js
+
       case 'nome': {
-        // 1) remove espaços no início/fim
-        let nome = String(v).trim();
-
-        // 2) se ficou vazio, é só espaços
-        if (nome.length === 0) {
-          valoresInvalidos.push({
-            parametro: chave,
-            valorRecebido: v,
-            dica: 'O nome não pode estar vazio nem conter apenas espaços. Exemplo: ?nome=Maria da Silva',
-          });
+        // usa o validador genérico (mensagens neutras)
+        const r = verificadorDeNome(v);
+        if (!r.ok) {
+          // adapta para o formato do montarWhere (com "?nome=" no exemplo)
+          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
           continue;
         }
-
-        // 3) NORMALIZA espaços internos (não gera erro):
-        //    transforma "Ana        Silveira" em "Ana Silveira"
-        nome = nome.replace(/\s{2,}/g, ' ');
-
-        // 4) apenas letras (com acentos), espaços, hífen e apóstrofo
-        const regexNome = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]+$/;
-        if (!regexNome.test(nome)) {
-          valoresInvalidos.push({
-            parametro: chave,
-            valorRecebido: v,
-            dica: 'O nome deve conter apenas letras e espaços. Exemplo: ?nome=Maria da Silva',
-          });
-          continue;
-        }
-
-        // 5) rejeita se for apenas números
-        if (/^\d+$/.test(nome)) {
-          valoresInvalidos.push({
-            parametro: chave,
-            valorRecebido: v,
-            dica: 'O nome não pode conter apenas números. Exemplo: ?nome=João',
-          });
-          continue;
-        }
-
-        // 6) exige que cada palavra tenha ao menos 2 letras
-        const palavras = nome.split(' ');
-        const todasValidas = palavras.every((palavra) => {
-          const apenasLetras = palavra.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '');
-          return apenasLetras.length >= 2;
-        });
-
-        if (!todasValidas) {
-          valoresInvalidos.push({
-            parametro: chave,
-            valorRecebido: v,
-            dica: 'Cada palavra do nome deve conter ao menos duas letras. Exemplo: ?nome=Ana Beatriz',
-          });
-          continue;
-        }
-
-        // 7) valor final normalizado e validado
-        v = nome;
+        v = r.valor; // já normalizado (trim, espaços e capitalização)
         break;
+      }
+
+      default: {
+        // sem tipo especial: mantém como veio
+        v = v;
       }
     }
 
@@ -115,4 +129,5 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
 
   return { where, invalidos, valoresInvalidos };
 }
+
 module.exports = montarWhere;

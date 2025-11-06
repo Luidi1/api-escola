@@ -120,6 +120,36 @@ class Controller {
         return { where, opcoes };
     }
 
+    #msgNaoEncontrado(where) {
+        // obtém o nome da classe (ex.: PessoaService → Pessoa)
+        const nomeClasse = this.entidadeService.constructor.name;
+        const entidadeSingular = nomeClasse
+            .replace(/Services?$/i, '') // remove "Service" ou "Services"
+            .replace(/s$/i, '')         // remove plural simples
+            || 'Registro';
+
+        // detecta gênero com base no final do nome
+        const ultimaLetra = entidadeSingular.slice(-1).toLowerCase();
+        const genero = ultimaLetra === 'a' ? 'f' : 'm';
+
+        // funções auxiliares para adequar o texto
+        const palavraEncontrado = genero === 'f' ? 'encontrada' : 'encontrado';
+        const artigoIndefinido = genero === 'f' ? 'uma' : 'um';
+
+        // mensagens dinâmicas conforme o filtro
+        if (!where || Object.keys(where).length === 0)
+            return `${entidadeSingular} não ${palavraEncontrado}.`;
+
+        if ('email' in where)
+            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse e-mail.`;
+
+        if ('nome' in where)
+            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse nome.`;
+
+        return `${entidadeSingular} não ${palavraEncontrado}.`;
+    }
+
+
     async pegaTodos(req, res) {
         try {
             const listaRegistros = await this.entidadeService.pegaTodosOsRegistros();
@@ -223,7 +253,10 @@ class Controller {
             const { where, opcoes } = prep;
             const registro = await this.entidadeService.pegaUmRegistro({ where, ...opcoes });
 
-            if (!registro) return res.status(404).json({ erro: 'Não encontrado' });
+            if (!registro) {
+                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+            }
+
             return res.status(200).json(registro);
         } catch (erro) {
             return res.status(500).json({ erro: erro.message });
@@ -284,6 +317,16 @@ class Controller {
             const registros = await this.entidadeService.pegaTodosOsRegistros({ scope });
 
             return res.status(200).json(registros);
+        } catch (erro) {
+            return res.status(500).json({ erro: erro.message });
+        }
+    }
+
+    async criaNovo(req, res) {
+        const dadosParaCriacao = req.body;
+        try {
+            const novoRegistroCriado = await this.entidadeService.criaRegistro(dadosParaCriacao);
+            return res.status(200).json(novoRegistroCriado);
         } catch (erro) {
             return res.status(500).json({ erro: erro.message });
         }

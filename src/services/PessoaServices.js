@@ -7,7 +7,7 @@ class PessoaServices extends Services {
     static CAMPOS_PERMITIDOS = ['id', 'email', 'nome', 'ativo', 'cpf'];
     static TIPOS = {
         id: 'number',
-        email: 'string',
+        email: 'email',
         nome: 'nome',
         ativo: 'boolean',
         cpf: 'cpf',
