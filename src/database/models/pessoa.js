@@ -43,7 +43,23 @@ module.exports = (sequelize, DataTypes) => {
         },
       },
     },
-    cpf: DataTypes.STRING,
+    cpf: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: {
+        name: 'pessoas_cpf_uk',
+        msg: 'Já existe uma pessoa com esse CPF.',
+      },
+      validate: {
+        cpfValido(value) {
+          const r = verificadorDeCPF(value);
+          if (!r.ok) throw new Error(r.erros[0].dica);
+          // normaliza antes de salvar (remove pontuação e formata 000.000.000-00)
+          this.setDataValue('cpf', r.valor);
+        },
+      },
+    },
+
     ativo: DataTypes.BOOLEAN,
     role: DataTypes.STRING
   }, {

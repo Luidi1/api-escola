@@ -1,6 +1,7 @@
 // src/controllers/utils/montarWhere.js
 const verificadorDeNome = require('../../utils/verificadorDeNome');
 const verificadorDeEmail = require('../../utils/verificadorDeEmail');
+const verificadorDeCPF = require('../../utils/verificadorDeCPF.js');
 
 function montarWhere(query, camposPermitidos = [], tipos = {}) {
   const where = {};
@@ -81,17 +82,14 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
       }
 
       case 'cpf': {
-        const ok = /^\d{11}$/.test(String(v));
-        if (!ok) {
-          valoresInvalidos.push({
-            parametro: chave,
-            valorRecebido: v,
-            dica: `11 dígitos numéricos. Ex.: ?${chave}=12345678900`,
-            tipo: 'valor_invalido',
-          });
+        // usa o verificador completo (remove pontuação, confere dígitos verificadores etc.)
+        const r = verificadorDeCPF(v);
+        if (!r.ok) {
+          // adapta os erros para o formato usado em montarWhere (com "?cpf=" no exemplo)
+          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
           continue;
         }
-        v = String(v);
+        v = r.valor; // CPF normalizado e formatado (000.000.000-00)
         break;
       }
 

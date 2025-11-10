@@ -136,28 +136,48 @@ class Controller {
         const palavraEncontrado = genero === 'f' ? 'encontrada' : 'encontrado';
         const artigoIndefinido = genero === 'f' ? 'uma' : 'um';
 
-        // mensagens dinâmicas conforme o filtro
+        // se não tiver filtro
         if (!where || Object.keys(where).length === 0)
             return `${entidadeSingular} não ${palavraEncontrado}.`;
 
+        // ⚙️ se tiver mais de um campo no filtro → usa mensagem genérica
+        if (Object.keys(where).length > 1)
+            return `${entidadeSingular} não ${palavraEncontrado}.`;
+
+        // casos específicos
         if ('email' in where)
             return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse e-mail.`;
 
         if ('nome' in where)
             return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse nome.`;
 
+        if ('cpf' in where)
+            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse CPF.`;
+
+        if ('id' in where)
+            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse ID.`;
+
+        // fallback genérico
         return `${entidadeSingular} não ${palavraEncontrado}.`;
     }
 
 
     async pegaTodos(req, res) {
         try {
+            // ⚙️ verifica se vieram query strings
+            if (req.query && Object.keys(req.query).length > 0) {
+                return res.status(400).json({
+                    erro: 'Esta rota não aceita filtros ou query strings.',
+                });
+            }
+
             const listaRegistros = await this.entidadeService.pegaTodosOsRegistros();
             return res.status(200).json(listaRegistros);
         } catch (erro) {
             return res.status(500).json({ erro: erro.message });
         }
     }
+
 
     async pegaUmPorId(req, res) {
         try {
@@ -275,17 +295,30 @@ class Controller {
                 ...opcoes
             });
 
-            return res.status(200).json(registros); // 200 com [] quando vazio
+            // Se não encontrar nenhum registro, retorna 404 com a mensagem padronizada
+            if (!registros || registros.length === 0) {
+                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+            }
+
+            // Caso contrário, retorna 200 com os resultados
+            return res.status(200).json(registros);
         } catch (erro) {
             return res.status(500).json({ erro: erro.message });
         }
     }
 
+
     async pegaPorEscopo(req, res) {
         try {
+            // ❌ impede query strings (ex.: /pessoas/escopo/ativos?nome=Ana)
+            if (req.query && Object.keys(req.query).length > 0) {
+                return res.status(400).json({
+                    erro: 'Esta rota não aceita filtros ou query strings.',
+                });
+            }
+
             // whitelist de scopes exposta pelo Service da entidade
             const scopesPermitidos = this.#scopesPermitidos();
-
             const scope = String(req.params?.scope || '').trim();
 
             // 422: sem escopo na rota
@@ -313,7 +346,7 @@ class Controller {
                 });
             }
 
-            // ✅ apenas aplica o escopo; não aceita query params (sem where/paginação)
+            // ✅ aplica o escopo; não aceita query params (sem where/paginação)
             const registros = await this.entidadeService.pegaTodosOsRegistros({ scope });
 
             return res.status(200).json(registros);
@@ -321,6 +354,7 @@ class Controller {
             return res.status(500).json({ erro: erro.message });
         }
     }
+
 
     async criaNovo(req, res) {
         const dadosParaCriacao = req.body;
