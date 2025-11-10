@@ -60,8 +60,20 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
 
-    ativo: DataTypes.BOOLEAN,
-    role: DataTypes.STRING
+    ativo: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,   // novo
+    },
+    role: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'estudante', // escolha um padrão do seu domínio
+      validate: {
+        isIn: [['estudante', 'docente', 'administrador']], // ajuste como quiser
+      },
+    },
+
   }, {
     sequelize,
     modelName: 'Pessoa',
