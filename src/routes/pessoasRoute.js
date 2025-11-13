@@ -10,5 +10,6 @@ router.get('/pessoas/pegarPessoasPorFiltro', pessoaController.pegaTodosPorFiltro
 router.get('/pessoas/pegarPessoasPorEscopo/:scope', pessoaController.pegaPorEscopo.bind(pessoaController));
 router.get('/pessoas/:id', pessoaController.pegaUmPorId.bind(pessoaController));
 router.post('/pessoas', (req, res) => pessoaController.criaNovo(req, res));
+router.delete('/pessoas', pessoaController.deletar.bind(pessoaController));
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const verificadorDeNome = require('../../utils/verificadorDeNome.js');
 const verificadorDeEmail = require('../../utils/verificadorDeEmail.js');
+const verificadorDeCPF = require('../../utils/verificadorDeCPF.js');
 
 'use strict';
 const {
@@ -19,7 +20,11 @@ module.exports = (sequelize, DataTypes) => {
   Pessoa.init({
     nome: {
       type: DataTypes.STRING,
+      allowNull: false,
       validate: {
+        notNull: {
+          msg: 'O Nome é obrigatório.',
+        },
         nomeValido(value) {
           const r = verificadorDeNome(value);
           if (!r.ok) throw new Error(r.erros[0].dica);
@@ -35,6 +40,9 @@ module.exports = (sequelize, DataTypes) => {
         msg: 'Já existe uma pessoa com esse e-mail.',
       },
       validate: {
+        notNull: {
+          msg: 'O Email é obrigatório.',
+        },
         emailValido(value) {
           const r = verificadorDeEmail(value);
           if (!r.ok) throw new Error(r.erros[0].dica);
@@ -51,6 +59,9 @@ module.exports = (sequelize, DataTypes) => {
         msg: 'Já existe uma pessoa com esse CPF.',
       },
       validate: {
+        notNull: {
+          msg: 'O CPF é obrigatório.',
+        },
         cpfValido(value) {
           const r = verificadorDeCPF(value);
           if (!r.ok) throw new Error(r.erros[0].dica);
@@ -63,8 +74,16 @@ module.exports = (sequelize, DataTypes) => {
     ativo: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: true,   // novo
+      defaultValue: true,
+      validate: {
+        isBoolean(value) {
+          if (typeof value !== 'boolean') {
+            throw new Error('O campo (ativo) deve ser verdadeiro (true) ou falso (false).');
+          }
+        },
+      },
     },
+
     role: {
       type: DataTypes.STRING,
       allowNull: false,

@@ -4,7 +4,7 @@ class PessoaServices extends Services {
     constructor() {
         super('Pessoa');
     }
-    static CAMPOS_PERMITIDOS = ['id', 'email', 'nome', 'ativo', 'cpf'];
+    static CAMPOS_PERMITIDOS = ['id', 'nome', 'email', 'cpf', 'ativo', 'role'];
     static TIPOS = {
         id: 'number',
         email: 'email',

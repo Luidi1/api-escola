@@ -29,10 +29,10 @@ class Controller {
         const tipos = this.#tipos();
 
         // defina ordenáveis por entidade (ou use todos os campos)
-        const ordenaveis = this.entidadeService.constructor.CAMPOS_ORDENAVEIS;
+        const ordenaveis = this.#camposOrdenaveis();
 
         // whitelist de scopes da entidade
-        const scopesPermitidos = this.entidadeService.constructor.SCOPES_PERMITIDOS || [];
+        const scopesPermitidos = this.#scopesPermitidos();
 
         const { opcoes, filtros, invalidos: invLista, valoresInvalidos: valLista } =
             montarOpcoesLista(req.query, { ordenaveis, limitMax: 100, scopesPermitidos });
@@ -356,15 +356,120 @@ class Controller {
     }
 
 
-    async criaNovo(req, res) {
-        const dadosParaCriacao = req.body;
+    async criaNovo(req, res, { transaction = null } = {}) {
         try {
-            const novoRegistroCriado = await this.entidadeService.criaRegistro(dadosParaCriacao);
-            return res.status(200).json(novoRegistroCriado);
+            const dados = req.body || {};
+            const camposPermitidos = this.#campos();
+
+            // 1) corpo vazio
+            if (Object.keys(dados).length === 0) {
+                return res.status(422).json({
+                    erro: 'Corpo da requisição vazio. Envie os dados para criar o registro.',
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 2) detecta chaves desconhecidas (ex.: "bico")
+            const desconhecidos = Object.keys(dados).filter(k => !camposPermitidos.includes(k));
+            if (desconhecidos.length > 0) {
+                const msg = desconhecidos.length === 1
+                    ? 'Campo não permitido no corpo da requisição.'
+                    : 'Campos não permitidos no corpo da requisição.';
+
+                return res.status(422).json({
+                    erro: msg,
+                    detalhes: {
+                        body: desconhecidos.map(k => ({
+                            parametro: k,
+                            valorRecebido: dados[k],
+                            tipo: 'parametro_inexistente',
+                            dica: `Use apenas: ${camposPermitidos.join(', ')}`
+                        }))
+                    },
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 3) cria (com suporte opcional a transação)
+            const novo = await this.entidadeService.criaRegistro({
+                values: dados,
+                transaction
+            });
+
+
+            // 4) resposta padronizada
+            return res.status(201).json({
+                mensagem: 'Registro criado com sucesso.',
+                registro: novo
+            });
         } catch (erro) {
             return res.status(500).json({ erro: erro.message });
         }
     }
+
+    async deletar(req, res, { transaction = null } = {}) {
+        try {
+            const prep = this.#preparaFiltro(req, { allowSemQuery: true });
+            if (prep.erro) return res.status(prep.erro.status).json(prep.erro.payload);
+
+            const { where: whereQuery, opcoes } = prep;
+            const whereParams = converteIds(req.params);
+            const where = { ...(whereQuery || {}), ...(whereParams || {}) };
+
+            if (!where || Object.keys(where).length === 0) {
+                return res.status(422).json({
+                    erro: 'Nenhum critério de deleção foi informado.',
+                    dicas: { exemplo: ['DELETE /pessoas/11', 'DELETE /pessoas?id=11'] }
+                });
+            }
+
+            const scope = opcoes?.scope || null; // 👈 pega o scope da query
+
+            const total = await this.entidadeService.contaRegistros({ where, transaction, scope });
+            if (total === 0) {
+                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+            }
+
+            const confirmMany = req.query?.confirmMany === 'true';
+            if (total > 1 && !confirmMany) {
+                return res.status(409).json({
+                    erro: 'Essa operação apagará múltiplos registros.',
+                    detalhes: { totalAfetados: total },
+                    dica: 'Reenvie com ?confirmMany=true para confirmar deleção em massa.'
+                });
+            }
+
+            const force = req.query?.force === 'true';
+
+            const resultado = await this.entidadeService.deletaRegistro({
+                where,
+                force,
+                transaction,
+                scope
+            });
+
+            if (!resultado?.ok) {
+                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+            }
+
+            const plural = resultado.registros.length > 1;
+            const msg =
+                resultado.tipo === 'soft'
+                    ? `Usuário${plural ? 's' : ''} deletado${plural ? 's' : ''} com soft delete com sucesso.`
+                    : `Usuário${plural ? 's' : ''} deletado${plural ? 's' : ''} permanentemente com sucesso.`;
+
+            return res.status(200).json(
+                plural
+                    ? { mensagem: msg, registros: resultado.registros }
+                    : { mensagem: msg, registro: resultado.registros[0] }
+            );
+
+        } catch (erro) {
+            return res.status(500).json({ erro: erro.message });
+        }
+    }
+
+
 
 }
 
