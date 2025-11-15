@@ -92,6 +92,79 @@ class Services {
     };
   }
 
+  async atualizarRegistro(opts = {}) {
+    const {
+      where,
+      scope,
+      values = {},
+      transaction = null,
+      ...resto
+    } = opts;
+
+    // 🔹 segurança mínima: obrigar where
+    if (!where || Object.keys(where).length === 0) {
+      throw new Error('Filtro `where` obrigatório para atualizar registro.');
+    }
+
+    // 🔹 segurança mínima: obrigar valores
+    if (!values || Object.keys(values).length === 0) {
+      throw new Error('Valores para atualização não podem estar vazios.');
+    }
+
+    let modelo = dataSource[this.modelo];
+
+    // aplica escopo, se houver
+    if (scope) {
+      modelo = modelo.scope(scope);
+    }
+
+    // 🔍 busca antes (para saber se existe algo pra atualizar)
+    const opcoesBuscaAntes = {
+      where,
+      ...(transaction ? { transaction } : {})
+    };
+
+    const registrosAntes = await modelo.findAll(opcoesBuscaAntes);
+
+    if (registrosAntes.length === 0) {
+      return { ok: false, registros: [] };
+    }
+
+    // 🔑 pega a PK do modelo (em geral "id")
+    const pk = modelo.primaryKeyAttribute || 'id';
+    const ids = registrosAntes.map(r => r.get(pk));
+
+    // ⚙️ faz o update
+    const opcoesUpdate = {
+      where,
+      ...(transaction ? { transaction } : {}),
+      ...resto
+    };
+
+    const [quantidade] = await modelo.update(values, opcoesUpdate);
+
+    if (quantidade === 0) {
+      // nada foi atualizado (pode ter batido em alguma constraint, etc.)
+      return { ok: false, registros: [] };
+    }
+
+    // 🔁 busca de novo para retornar já atualizados,
+    //    agora usando os IDs capturados antes (e não mais o where original)
+    const opcoesBuscaDepois = {
+      where: { [pk]: ids },
+      ...(transaction ? { transaction } : {})
+    };
+
+    const registrosDepois = await modelo.findAll(opcoesBuscaDepois);
+
+    return {
+      ok: true,
+      registros: registrosDepois.map(r => r.get({ plain: true })),
+      alterados: quantidade
+    };
+  }
+
+
 
 
   async contaRegistros(opts = {}) {

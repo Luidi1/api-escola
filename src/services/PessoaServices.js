@@ -11,6 +11,7 @@ class PessoaServices extends Services {
         nome: 'nome',
         ativo: 'boolean',
         cpf: 'cpf',
+        role: 'role'
     };
     static CAMPOS_ORDENAVEIS = ['id', 'email', 'nome'];
     static SCOPES_PERMITIDOS = ['todosOsRegistros', 'inativos'];

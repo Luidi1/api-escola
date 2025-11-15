@@ -34,8 +34,15 @@ class Controller {
         // whitelist de scopes da entidade
         const scopesPermitidos = this.#scopesPermitidos();
 
+        // 🔹 copia a query original e remove parâmetros "especiais" que NÃO são de filtro/listagem
+        const queryOriginal = req.query || {};
+        const paramsEspeciais = new Set(['confirmMany', 'force']);
+        const queryLimpa = Object.fromEntries(
+            Object.entries(queryOriginal).filter(([chave]) => !paramsEspeciais.has(chave))
+        );
+
         const { opcoes, filtros, invalidos: invLista, valoresInvalidos: valLista } =
-            montarOpcoesLista(req.query, { ordenaveis, limitMax: 100, scopesPermitidos });
+            montarOpcoesLista(queryLimpa, { ordenaveis, limitMax: 100, scopesPermitidos });
 
         // 🔸 converte erros de listagem para formato unificado (NÃO retorna ainda)
         const errosListagem = [
@@ -44,8 +51,7 @@ class Controller {
         ];
 
         const semQuery =
-            !req.query ||
-            Object.keys(req.query).length === 0 ||
+            Object.keys(queryLimpa).length === 0 ||
             Object.keys(filtros).length === 0;
 
         // ✅ se permitir sem query, ainda assim valide listagem; e monte detalhes sem chaves vazias
@@ -120,45 +126,118 @@ class Controller {
         return { where, opcoes };
     }
 
-    #msgNaoEncontrado(where) {
-        // obtém o nome da classe (ex.: PessoaService → Pessoa)
+    #infoEntidade() {
         const nomeClasse = this.entidadeService.constructor.name;
-        const entidadeSingular = nomeClasse
-            .replace(/Services?$/i, '') // remove "Service" ou "Services"
-            .replace(/s$/i, '')         // remove plural simples
-            || 'Registro';
 
-        // detecta gênero com base no final do nome
-        const ultimaLetra = entidadeSingular.slice(-1).toLowerCase();
+        const entidade = nomeClasse
+            .replace(/Services?$/i, '')
+            .replace(/s$/i, '') || 'Registro';
+
+        const ultimaLetra = entidade.slice(-1).toLowerCase();
         const genero = ultimaLetra === 'a' ? 'f' : 'm';
 
-        // funções auxiliares para adequar o texto
+        return {
+            entidade,                    // "Pessoa"
+            entidadeMinuscula: entidade.toLowerCase(), // "pessoa"
+            genero                       // 'f' ou 'm'
+        };
+    }
+
+
+
+    #msgNaoEncontrado(where) {
+        const { entidadeMinuscula, genero } = this.#infoEntidade();
+
+        const prefixo = genero === 'f' ? 'Nenhuma' : 'Nenhum';
         const palavraEncontrado = genero === 'f' ? 'encontrada' : 'encontrado';
-        const artigoIndefinido = genero === 'f' ? 'uma' : 'um';
 
-        // se não tiver filtro
-        if (!where || Object.keys(where).length === 0)
-            return `${entidadeSingular} não ${palavraEncontrado}.`;
+        // caso sem filtros (fallback raro)
+        if (!where || Object.keys(where).length === 0) {
+            return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado}.`;
+        }
 
-        // ⚙️ se tiver mais de um campo no filtro → usa mensagem genérica
-        if (Object.keys(where).length > 1)
-            return `${entidadeSingular} não ${palavraEncontrado}.`;
+        const chaves = Object.keys(where);
 
-        // casos específicos
-        if ('email' in where)
-            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse e-mail.`;
+        // formatar pares campo = valor
+        const filtrosFormatados = chaves
+            .map(campo => `${campo} = ${where[campo]}`)
+            .join(', ');
 
-        if ('nome' in where)
-            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse nome.`;
+        // singular (1 filtro)
+        if (chaves.length === 1) {
+            return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} com o filtro: ${filtrosFormatados}.`;
+        }
 
-        if ('cpf' in where)
-            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse CPF.`;
+        // plural (2 ou mais filtros)
+        return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} com os filtros: ${filtrosFormatados}.`;
+    }
 
-        if ('id' in where)
-            return `Não foi ${palavraEncontrado} ${artigoIndefinido} ${entidadeSingular.toLowerCase()} com esse ID.`;
 
-        // fallback genérico
-        return `${entidadeSingular} não ${palavraEncontrado}.`;
+    #msgNadaParaAtualizar(where) {
+        const { entidadeMinuscula, genero } = this.#infoEntidade();
+        const prefixo = genero === 'f' ? 'Nenhuma' : 'Nenhum';
+        const palavraEncontrado = genero === 'f' ? 'encontrada' : 'encontrado';
+
+        // se, por algum motivo, não tiver where
+        if (!where || Object.keys(where).length === 0) {
+            return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} para fazer a atualização.`;
+        }
+
+        const chaves = Object.keys(where);
+
+        const partes = chaves.map((campo) => {
+            const valor = where[campo];
+
+            let repr;
+            if (valor === null || valor === undefined) {
+                repr = 'null';
+            } else if (typeof valor === 'object') {
+                // para casos tipo { [Op.eq]: 'admin' } ou algo mais complexo
+                repr = JSON.stringify(valor);
+            } else {
+                repr = String(valor);
+            }
+
+            return `${campo} = ${repr}`;
+        });
+
+        const palavraFiltros = chaves.length > 1 ? 'filtros' : 'filtro';
+
+        return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} para fazer a atualização com o ${palavraFiltros}: ${partes.join(', ')}.`;
+    }
+
+    #msgNadaParaDeletar(where) {
+        const { entidadeMinuscula, genero } = this.#infoEntidade();
+        const prefixo = genero === 'f' ? 'Nenhuma' : 'Nenhum';
+        const palavraEncontrado = genero === 'f' ? 'encontrada' : 'encontrado';
+
+        // nenhum filtro informado
+        if (!where || Object.keys(where).length === 0) {
+            return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} para fazer a deleção.`;
+        }
+
+        const chaves = Object.keys(where);
+
+        // montar cada par campo = valor
+        const partes = chaves.map((campo) => {
+            const valor = where[campo];
+
+            let repr;
+            if (valor === null || valor === undefined) {
+                repr = 'null';
+            } else if (typeof valor === 'object') {
+                // suporta objetos como Op.eq, Op.in, etc
+                repr = JSON.stringify(valor);
+            } else {
+                repr = String(valor);
+            }
+
+            return `${campo} = ${repr}`;
+        });
+
+        const palavraFiltros = chaves.length > 1 ? 'filtros' : 'filtro';
+
+        return `${prefixo} ${entidadeMinuscula} ${palavraEncontrado} para fazer a deleção com o ${palavraFiltros}: ${partes.join(', ')}.`;
     }
 
 
@@ -358,8 +437,15 @@ class Controller {
 
     async criaNovo(req, res, { transaction = null } = {}) {
         try {
+            if (req.query && Object.keys(req.query).length > 0) {
+                return res.status(400).json({
+                    erro: 'Esta rota não aceita filtros ou query strings.',
+                });
+            }
+
             const dados = req.body || {};
             const camposPermitidos = this.#campos();
+            const tipos = this.#tipos();
 
             // 1) corpo vazio
             if (Object.keys(dados).length === 0) {
@@ -390,14 +476,43 @@ class Controller {
                 });
             }
 
-            // 3) cria (com suporte opcional a transação)
+            // 3) valida e normaliza usando montarWhere (agora servindo também para body)
+            const {
+                where: dadosNormalizados,
+                invalidos,
+                valoresInvalidos
+            } = montarWhere(dados, camposPermitidos, tipos, { usarFormatoQuery: false });
+
+            if (invalidos.length > 0 || valoresInvalidos.length > 0) {
+                const errosBody = [
+                    ...invalidos.map(e => ({
+                        parametro: e.parametro,
+                        valorRecebido: e.valorRecebido,
+                        tipo: 'parametro_inexistente',
+                        dica: e.dica
+                    })),
+                    ...valoresInvalidos.map(e => ({
+                        parametro: e.parametro,
+                        valorRecebido: e.valorRecebido,
+                        tipo: 'valor_invalido',
+                        dica: e.dica
+                    }))
+                ];
+
+                return res.status(422).json({
+                    erro: 'Alguns campos possuem problemas.',
+                    detalhes: { body: errosBody },
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 4) cria (com suporte opcional a transação), usando os dados já normalizados
             const novo = await this.entidadeService.criaRegistro({
-                values: dados,
+                values: dadosNormalizados,
                 transaction
             });
 
-
-            // 4) resposta padronizada
+            // 5) resposta padronizada
             return res.status(201).json({
                 mensagem: 'Registro criado com sucesso.',
                 registro: novo
@@ -406,6 +521,7 @@ class Controller {
             return res.status(500).json({ erro: erro.message });
         }
     }
+
 
     async deletar(req, res, { transaction = null } = {}) {
         try {
@@ -416,18 +532,27 @@ class Controller {
             const whereParams = converteIds(req.params);
             const where = { ...(whereQuery || {}), ...(whereParams || {}) };
 
-            if (!where || Object.keys(where).length === 0) {
+            const scope = opcoes?.scope || null; // 👈 pega o scope da query
+
+            // 🔧 NOVO: considera scope como critério também
+            const temWhere = where && Object.keys(where).length > 0;
+            const temScope = !!scope;
+
+            if (!temWhere && !temScope) {
                 return res.status(422).json({
                     erro: 'Nenhum critério de deleção foi informado.',
-                    dicas: { exemplo: ['DELETE /pessoas/11', 'DELETE /pessoas?id=11'] }
+                    dicas: { exemplo: ['DELETE /pessoas/11', 'DELETE /pessoas?id=11', 'DELETE /pessoas?scope=inativos'] }
                 });
             }
 
-            const scope = opcoes?.scope || null; // 👈 pega o scope da query
+            const total = await this.entidadeService.contaRegistros({
+                where: where || {}, // {} é ok, desde que tenha scope
+                transaction,
+                scope
+            });
 
-            const total = await this.entidadeService.contaRegistros({ where, transaction, scope });
             if (total === 0) {
-                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+                return res.status(404).json({ erro: this.#msgNadaParaDeletar(where) });
             }
 
             const confirmMany = req.query?.confirmMany === 'true';
@@ -449,7 +574,7 @@ class Controller {
             });
 
             if (!resultado?.ok) {
-                return res.status(404).json({ erro: this.#msgNaoEncontrado(where) });
+                return res.status(404).json({ erro: this.#msgNadaParaDeletar(where) });
             }
 
             const plural = resultado.registros.length > 1;
@@ -468,6 +593,146 @@ class Controller {
             return res.status(500).json({ erro: erro.message });
         }
     }
+
+
+    async atualizar(req, res, { transaction = null } = {}) {
+        try {
+            const camposPermitidos = this.#campos();
+            const tipos = this.#tipos();
+
+            // 🔹 prepara filtros (query) e scope; permite sem query porque pode vir só params
+            const prep = this.#preparaFiltro(req, { allowSemQuery: true });
+            if (prep.erro) return res.status(prep.erro.status).json(prep.erro.payload);
+
+            const { where: whereQuery, opcoes } = prep;
+            const whereParams = converteIds(req.params);
+            const where = { ...(whereQuery || {}), ...(whereParams || {}) };
+
+            const scope = opcoes?.scope || null; // 👈 pega o scope da query
+
+            // 🔧 considera scope como critério também
+            const temWhere = where && Object.keys(where).length > 0;
+            const temScope = !!scope;
+
+            if (!temWhere && !temScope) {
+                return res.status(422).json({
+                    erro: 'Nenhum critério de atualização foi informado.',
+                    dicas: {
+                        exemplo: [
+                            'PATCH /pessoas/11',
+                            'PATCH /pessoas?id=11',
+                            'PATCH /pessoas?scope=inativos'
+                        ]
+                    }
+                });
+            }
+
+            // 🔹 corpo deve ter ao menos um campo
+            const dados = req.body || {};
+            if (Object.keys(dados).length === 0) {
+                return res.status(422).json({
+                    erro: 'Corpo da requisição vazio. Envie ao menos um campo para atualizar o registro.',
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 🔹 detecta campos desconhecidos no body
+            const desconhecidos = Object.keys(dados).filter(k => !camposPermitidos.includes(k));
+            if (desconhecidos.length > 0) {
+                const msg = desconhecidos.length === 1
+                    ? 'Campo não permitido no corpo da requisição.'
+                    : 'Campos não permitidos no corpo da requisição.';
+
+                return res.status(422).json({
+                    erro: msg,
+                    detalhes: {
+                        body: desconhecidos.map(k => ({
+                            parametro: k,
+                            valorRecebido: dados[k],
+                            tipo: 'parametro_inexistente',
+                            dica: `Use apenas: ${camposPermitidos.join(', ')}`
+                        }))
+                    },
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 🔹 valida/normaliza o body usando montarWhere (modo body, não query)
+            const {
+                where: dadosNormalizados,
+                invalidos,
+                valoresInvalidos
+            } = montarWhere(dados, camposPermitidos, tipos, { usarFormatoQuery: false });
+
+            if (invalidos.length > 0 || valoresInvalidos.length > 0) {
+                const errosBody = [
+                    ...invalidos.map(e => ({
+                        parametro: e.parametro,
+                        valorRecebido: e.valorRecebido,
+                        tipo: 'parametro_inexistente',
+                        dica: e.dica
+                    })),
+                    ...valoresInvalidos.map(e => ({
+                        parametro: e.parametro,
+                        valorRecebido: e.valorRecebido,
+                        tipo: 'valor_invalido',
+                        dica: e.dica
+                    }))
+                ];
+
+                return res.status(422).json({
+                    erro: 'Alguns campos possuem problemas.',
+                    detalhes: { body: errosBody },
+                    dicas: { 'campos permitidos': camposPermitidos }
+                });
+            }
+
+            // 🔹 conta quantos registros serão afetados
+            const total = await this.entidadeService.contaRegistros({
+                where: where || {},
+                transaction,
+                scope
+            });
+
+            if (total === 0) {
+                return res.status(404).json({ erro: this.#msgNadaParaAtualizar(where) });
+            }
+
+            // 🔹 evita atualização em massa sem confirmação explícita
+            const confirmMany = req.query?.confirmMany === 'true';
+            if (total > 1 && !confirmMany) {
+                return res.status(409).json({
+                    erro: 'Essa operação atualizará múltiplos registros.',
+                    detalhes: { totalAfetados: total },
+                    dica: 'Reenvie com ?confirmMany=true para confirmar atualização em massa.'
+                });
+            }
+
+            // 🔹 executa a atualização
+            const resultado = await this.entidadeService.atualizarRegistro({
+                where,
+                values: dadosNormalizados,
+                transaction,
+                scope
+            });
+
+            if (!resultado?.ok || !resultado.registros || resultado.registros.length === 0) {
+                return res.status(404).json({ erro: this.#msgNadaParaAtualizar(where) });
+            }
+
+            const plural = resultado.registros.length > 1;
+            const msg = `Usuário${plural ? 's' : ''} atualizado${plural ? 's' : ''} com sucesso.`;
+
+            return res.status(200).json(
+                plural
+                    ? { mensagem: msg, registros: resultado.registros }
+                    : { mensagem: msg, registro: resultado.registros[0] }
+            );
+        } catch (erro) {
+            return res.status(500).json({ erro: erro.message });
+        }
+    }
+
 
 
 

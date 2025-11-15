@@ -76,9 +76,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: true,
       validate: {
+        notNull: {
+          msg: 'O campo (ativo) é obrigatório.',
+        },
         isBoolean(value) {
           if (typeof value !== 'boolean') {
-            throw new Error('O campo (ativo) deve ser verdadeiro (true) ou falso (false).');
+            throw new Error('O campo ativo deve ser verdadeiro (true) ou falso (false).');
           }
         },
       },

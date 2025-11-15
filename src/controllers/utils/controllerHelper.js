@@ -3,7 +3,7 @@ const verificadorDeNome = require('../../utils/verificadorDeNome');
 const verificadorDeEmail = require('../../utils/verificadorDeEmail');
 const verificadorDeCPF = require('../../utils/verificadorDeCPF.js');
 
-function montarWhere(query, camposPermitidos = [], tipos = {}) {
+function montarWhere(dados, camposPermitidos = [], tipos = {}, { usarFormatoQuery = true } = {}) {
   const where = {};
   const invalidos = [];        // { parametro, valorRecebido, dica }
   const valoresInvalidos = []; // { parametro, valorRecebido, dica, tipo }
@@ -16,7 +16,7 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
   }
 
   // helper: empurra erros no formato padrão do montarWhere
-  function empurraErros(campo, valorRecebido, errosDoValidador, { usarFormatoQuery = true } = {}) {
+  function empurraErros(campo, valorRecebido, errosDoValidador) {
     for (const e of errosDoValidador) {
       const dica = usarFormatoQuery ? dicaComQuery(campo, e.dica) : e.dica;
       valoresInvalidos.push({
@@ -28,13 +28,17 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
     }
   }
 
-  for (const chave of Object.keys(query)) {
+  for (const chave of Object.keys(dados)) {
     if (!camposPermitidos.includes(chave)) {
-      invalidos.push({ parametro: chave, valorRecebido: query[chave], dica: 'Parâmetro não permitido.' });
+      invalidos.push({
+        parametro: chave,
+        valorRecebido: dados[chave],
+        dica: 'Parâmetro não permitido.'
+      });
       continue;
     }
 
-    let v = query[chave];
+    let v = dados[chave];
 
     switch (tipos[chave]) {
       case 'number': {
@@ -45,7 +49,9 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
           valoresInvalidos.push({
             parametro: chave,
             valorRecebido: v,
-            dica: `Use um número inteiro. Ex.: ?${chave}=3`,
+            dica: usarFormatoQuery
+              ? `Use um número inteiro. Ex.: ?${chave}=3`
+              : 'Use um número inteiro. Ex.: 3',
           });
           continue;
         }
@@ -57,7 +63,9 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
           valoresInvalidos.push({
             parametro: chave,
             valorRecebido: v,
-            dica: `Use um id inteiro positivo. Ex.: ?${chave}=3`,
+            dica: usarFormatoQuery
+              ? `Use um id inteiro positivo. Ex.: ?${chave}=3`
+              : 'Use um id inteiro positivo. Ex.: 3',
           });
           continue;
         }
@@ -72,7 +80,9 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
           valoresInvalidos.push({
             parametro: chave,
             valorRecebido: v,
-            dica: `Use true ou false. Ex.: ?${chave}=true`,
+            dica: usarFormatoQuery
+              ? `Use true ou false. Ex.: ?${chave}=true`
+              : 'Use true ou false. Ex.: true',
             tipo: 'valor_invalido',
           });
           continue;
@@ -85,8 +95,8 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
         // usa o verificador completo (remove pontuação, confere dígitos verificadores etc.)
         const r = verificadorDeCPF(v);
         if (!r.ok) {
-          // adapta os erros para o formato usado em montarWhere (com "?cpf=" no exemplo)
-          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
+          // adapta os erros para o formato usado em montarWhere
+          empurraErros(chave, v, r.erros);
           continue;
         }
         v = r.valor; // CPF normalizado e formatado (000.000.000-00)
@@ -97,7 +107,7 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
         // usa o verificador completo (normaliza domínio, checa formato por etapas)
         const r = verificadorDeEmail(v);
         if (!r.ok) {
-          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
+          empurraErros(chave, v, r.erros);
           continue;
         }
         v = r.valor; // e-mail normalizado (ex.: domínio em minúsculas)
@@ -108,11 +118,34 @@ function montarWhere(query, camposPermitidos = [], tipos = {}) {
         // usa o validador genérico (mensagens neutras)
         const r = verificadorDeNome(v);
         if (!r.ok) {
-          // adapta para o formato do montarWhere (com "?nome=" no exemplo)
-          empurraErros(chave, v, r.erros, { usarFormatoQuery: true });
+          // adapta para o formato do montarWhere
+          empurraErros(chave, v, r.erros);
           continue;
         }
         v = r.valor; // já normalizado (trim, espaços e capitalização)
+        break;
+      }
+
+      case 'role': {
+        // normaliza: tira espaços e deixa minúsculo
+        const s = String(v).trim().toLowerCase();
+
+        const rolesPermitidos = ['estudante', 'docente', 'administrador'];
+
+        if (!rolesPermitidos.includes(s)) {
+          valoresInvalidos.push({
+            parametro: chave,
+            valorRecebido: v,
+            dica: usarFormatoQuery
+              ? `Use um dos valores permitidos (${rolesPermitidos.join(', ')}). Ex.: ?${chave}=estudante`
+              : `Use um dos valores permitidos (${rolesPermitidos.join(', ')}). Ex.: estudante`,
+            tipo: 'valor_invalido',
+          });
+          continue;
+        }
+
+        // se passar na validação, salva já normalizado
+        v = s;
         break;
       }
 
